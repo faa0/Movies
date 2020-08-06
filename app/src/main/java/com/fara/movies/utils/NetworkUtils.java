@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.MalformedURLException;
+import java.net.URI;
 import java.net.URL;
 import java.util.concurrent.ExecutionException;
 
@@ -19,6 +20,8 @@ import javax.net.ssl.HttpsURLConnection;
 public class NetworkUtils {
 
     private static final String BASE_URL = "https://api.themoviedb.org/3/discover/movie";
+    private static final String BASE_URL_VIDEOS= "https://api.themoviedb.org/3/movie/%s/videos";
+    private static final String BASE_URL_REVIEWS= "https://api.themoviedb.org/3/movie/%s/reviews";
 
     private static final String PARAMS_API_KEY = "api_key";
     private static final String PARAMS_LANGUAGE = "language";
@@ -32,6 +35,20 @@ public class NetworkUtils {
 
     public static final int POPULARITY = 0;
     public static final int TOP_RATED = 1;
+
+    private static URL buildURLToVideos(int id) throws MalformedURLException {
+        Uri uri = Uri.parse(String.format(BASE_URL_VIDEOS, id)).buildUpon()
+                .appendQueryParameter(PARAMS_API_KEY, API_KEY)
+                .appendQueryParameter(PARAMS_LANGUAGE, LANGUAGE_VALUE).build();
+        return new URL(uri.toString());
+    }
+
+    private static URL buildURLToReviews(int id) throws MalformedURLException {
+        Uri uri = Uri.parse(String.format(BASE_URL_REVIEWS, id)).buildUpon()
+                .appendQueryParameter(PARAMS_API_KEY, API_KEY)
+                .appendQueryParameter(PARAMS_LANGUAGE, LANGUAGE_VALUE).build();
+        return new URL(uri.toString());
+    }
 
     private static URL buildURL(int sortBy, int page) throws MalformedURLException {
         URL result = null;
@@ -48,6 +65,22 @@ public class NetworkUtils {
                 .appendQueryParameter(PARAMS_PAGE, Integer.toString(page))
                 .build();
         result = new URL(uri.toString());
+        return result;
+    }
+
+    public static JSONObject getJSONForVideos(int id)
+            throws MalformedURLException, ExecutionException, InterruptedException {
+        JSONObject result = null;
+        URL url = buildURLToVideos(id);
+        result = new JSONLoadTask().execute(url).get();
+        return result;
+    }
+
+    public static JSONObject getJSONForReviews(int id)
+            throws MalformedURLException, ExecutionException, InterruptedException {
+        JSONObject result = null;
+        URL url = buildURLToReviews(id);
+        result = new JSONLoadTask().execute(url).get();
         return result;
     }
 

@@ -7,4 +7,5 @@
     <string name="remove_from_favourite">Удалено из избанного</string>
     <string name="item_main">Главная</string>
     <string name="item_favourite">Избранное</string>
+    <string name="launch_trailer">Запусить трелйер</string>
 </resources>
