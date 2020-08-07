@@ -1,20 +1,25 @@
 package com.fara.movies;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.Observer;
 import androidx.lifecycle.ViewModelProviders;
+import androidx.loader.app.LoaderManager;
+import androidx.loader.content.Loader;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.util.DisplayMetrics;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.CompoundButton;
+import android.widget.ProgressBar;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -29,19 +34,31 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.ExecutionException;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity implements LoaderManager.LoaderCallbacks<JSONObject> {
 
     private Switch switchSort;
     private RecyclerView rvPosters;
     private MovieAdapter movieAdapter;
     private TextView tvTopRated;
     private TextView tvPopularity;
+    private ProgressBar pbLoading;
 
     private MainViewModel viewModel;
+
+    private static int LOADER_ID = 0;
+    private LoaderManager loaderManager;
+
+    private static int page = 1;
+    private static int methodOfSort;
+    private static boolean isLoading = false;
+
+    private static String lang;
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
@@ -66,18 +83,30 @@ public class MainActivity extends AppCompatActivity {
         return super.onOptionsItemSelected(item);
     }
 
+    private int getColumnCount() {
+        DisplayMetrics displayMetrics = new DisplayMetrics();
+        getWindowManager().getDefaultDisplay().getMetrics(displayMetrics);
+        int width = (int) (displayMetrics.widthPixels / displayMetrics.density);
+        return Math.max(width / 185, 2);
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        lang = Locale.getDefault().getLanguage();
+
+        viewModel = ViewModelProviders.of(this).get(MainViewModel.class);
+        loaderManager = LoaderManager.getInstance(this);
+
         tvTopRated = findViewById(R.id.tvTopRated);
         tvPopularity = findViewById(R.id.tvPopularity);
         switchSort = findViewById(R.id.switchSort);
-        viewModel = ViewModelProviders.of(this).get(MainViewModel.class);
+        pbLoading = findViewById(R.id.pbLoading);
 
         rvPosters = findViewById(R.id.rvPosters);
-        rvPosters.setLayoutManager(new GridLayoutManager(this, 2));
+        rvPosters.setLayoutManager(new GridLayoutManager(this, getColumnCount()));
         movieAdapter = new MovieAdapter();
         rvPosters.setAdapter(movieAdapter);
 
@@ -85,6 +114,7 @@ public class MainActivity extends AppCompatActivity {
         switchSort.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
             public void onCheckedChanged(CompoundButton compoundButton, boolean b) {
+                page = 1;
                 setMethodOfSort(b);
             }
         });
@@ -101,14 +131,18 @@ public class MainActivity extends AppCompatActivity {
         movieAdapter.setOnReachEndListener(new MovieAdapter.OnReachEndListener() {
             @Override
             public void onReachEnd() {
-                Toast.makeText(MainActivity.this, "sos", Toast.LENGTH_SHORT).show();
+                if (!isLoading) {
+                    downloadDate(methodOfSort, page);
+                }
             }
         });
         LiveData<List<Movie>> moviesFromLiveData = viewModel.getMovies();
         moviesFromLiveData.observe(this, new Observer<List<Movie>>() {
             @Override
             public void onChanged(List<Movie> movies) {
-                movieAdapter.setMovies(movies);
+                if (page == 1) {
+                    movieAdapter.setMovies(movies);
+                }
             }
         });
     }
@@ -124,7 +158,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void setMethodOfSort(boolean isTopRated) {
-        int methodOfSort;
         if (isTopRated) {
             methodOfSort = NetworkUtils.TOP_RATED;
             tvTopRated.setTextColor(getResources().getColor(R.color.colorAccent));
@@ -134,27 +167,61 @@ public class MainActivity extends AppCompatActivity {
             tvPopularity.setTextColor(getResources().getColor(R.color.colorAccent));
             tvTopRated.setTextColor(getResources().getColor(R.color.white));
         }
-        downloadDate(methodOfSort, 1);
+        downloadDate(methodOfSort, page);
     }
 
     private void downloadDate(int methodOfSort, int page) {
-
-        JSONObject jsonObject = null;
+        URL url = null;
         try {
-            jsonObject = NetworkUtils.getJSONFromNetwork(methodOfSort, 1);
-        } catch (MalformedURLException | ExecutionException | InterruptedException e) {
+            url = NetworkUtils.buildURL(methodOfSort, page, lang);
+            Bundle bundle = new Bundle();
+            bundle.putString("url", url.toString());
+            loaderManager.restartLoader(LOADER_ID,bundle,this);
+        } catch (MalformedURLException e) {
             e.printStackTrace();
         }
-        try {
-            ArrayList<Movie> movies = JSONUtils.getMoviesFromJSON(jsonObject);
-            if (movies != null && !movies.isEmpty()) {
-                viewModel.deleteAllMovies();
-                for(Movie movie : movies) {
-                    viewModel.insertMovie(movie);
-                }
+    }
+
+    @NonNull
+    @Override
+    public Loader<JSONObject> onCreateLoader(int id, @Nullable Bundle args) {
+        NetworkUtils.JSONLoader jsonLoader = new NetworkUtils.JSONLoader(this, args);
+        jsonLoader.setOnStartLoadingListener(new NetworkUtils.JSONLoader.OnStartLoadingListener() {
+            @Override
+            public void onStartLoading() {
+                pbLoading.setVisibility(View.VISIBLE);
+                isLoading = true;
             }
+        });
+        return jsonLoader;
+    }
+
+    @Override
+    public void onLoadFinished(@NonNull Loader<JSONObject> loader, JSONObject data) {
+        ArrayList<Movie> movies = null;
+        try {
+            movies = JSONUtils.getMoviesFromJSON(data);
         } catch (JSONException e) {
             e.printStackTrace();
         }
+        if (movies != null && !movies.isEmpty()) {
+            if (page == 1) {
+                viewModel.deleteAllMovies();
+                movieAdapter.clear();
+            }
+            for (Movie movie : movies) {
+                viewModel.insertMovie(movie);
+            }
+            movieAdapter.addMovies(movies);
+            page ++;
+        }
+        isLoading = false;
+        pbLoading.setVisibility(View.INVISIBLE);
+        loaderManager.destroyLoader(LOADER_ID);
+    }
+
+    @Override
+    public void onLoaderReset(@NonNull Loader<JSONObject> loader) {
+
     }
 }

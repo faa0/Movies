@@ -13,6 +13,7 @@ import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.ImageView;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -38,6 +39,7 @@ import org.json.JSONObject;
 
 import java.net.MalformedURLException;
 import java.util.ArrayList;
+import java.util.Locale;
 import java.util.concurrent.ExecutionException;
 
 public class DetailActivity extends AppCompatActivity {
@@ -49,6 +51,7 @@ public class DetailActivity extends AppCompatActivity {
     private TextView tvRating;
     private TextView tvReleaseDate;
     private TextView tvOverview;
+    private ScrollView svInfo;
 
     private RecyclerView rvTrailers;
     private RecyclerView rvReviews;
@@ -60,6 +63,8 @@ public class DetailActivity extends AppCompatActivity {
     private FavouriteMovie favouriteMovie;
 
     private MainViewModel viewModel;
+
+    private static String lang;
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
@@ -89,6 +94,8 @@ public class DetailActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_detail);
 
+        lang = Locale.getDefault().getLanguage();
+
         ivBigPoster = findViewById(R.id.ivBigPoster);
         tvTitle = findViewById(R.id.tvTitle);
         tvOriginalTitle = findViewById(R.id.tvOriginalTitle);
@@ -96,6 +103,7 @@ public class DetailActivity extends AppCompatActivity {
         tvReleaseDate = findViewById(R.id.tvReleaseDate);
         tvOverview = findViewById(R.id.tvOverview);
         ivAddToFavourite = findViewById(R.id.ivAddToFavorite);
+        svInfo = findViewById(R.id.svInfo);
 
         Intent intent = getIntent();
         if (intent != null && intent.hasExtra("id")) {
@@ -106,7 +114,7 @@ public class DetailActivity extends AppCompatActivity {
 
         viewModel = ViewModelProviders.of(this).get(MainViewModel.class);
         movie = viewModel.getMovieById(id);
-        Picasso.get().load(movie.getBigPosterPath()).into(ivBigPoster);
+        Picasso.get().load(movie.getBigPosterPath()).placeholder(R.drawable.ic_launcher_background).into(ivBigPoster);
         tvTitle.setText(movie.getTitle());
         tvOriginalTitle.setText(movie.getOriginalTitle());
         tvOverview.setText(movie.getOverview());
@@ -132,15 +140,16 @@ public class DetailActivity extends AppCompatActivity {
 
         JSONObject jsonObjectTrailers = null;
         try {
-            jsonObjectTrailers = NetworkUtils.getJSONForVideos(movie.getId());
+            jsonObjectTrailers = NetworkUtils.getJSONForVideos(movie.getId(), lang);
             ArrayList<Trailer> trailers = JSONUtils.getTrailersFromJSON(jsonObjectTrailers);
-            JSONObject jsonObjectReviews = NetworkUtils.getJSONForReviews(movie.getId());
+            JSONObject jsonObjectReviews = NetworkUtils.getJSONForReviews(movie.getId(), lang);
             ArrayList<Review> reviews = JSONUtils.getReviewsFromJSON(jsonObjectReviews);
             reviewAdapter.setReviews(reviews);
             trailerAdapter.setTrailers(trailers);
         } catch (MalformedURLException | ExecutionException | InterruptedException | JSONException e) {
             e.printStackTrace();
         }
+        svInfo.smoothScrollTo(0, 0);
     }
 
     public void onClickChangeFavourite(View view) {
